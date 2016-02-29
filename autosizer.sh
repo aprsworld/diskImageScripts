@@ -2,13 +2,14 @@
 # Automatic Image file resizer
 # Shamelessly stolen and modified by "David A. Russell" <david@aprsworld.com>
 #
-# This script will shrink an image file with a single FAT32 partition followed by
-# a single ext4 partition.  It will shrink the ext4 partition found to the minimum
-# size required to exist with all files + the second argument in MegaBytes for spare
-# space.
+# This script will shrink an image file with a single FAT32 partition followed
+# by a single ext4 partition.  It will shrink the ext4 partition found to the
+# minimum size required to exist with all files + the second argument in
+# additional blocks space.  Blocks are generally 4kBytes.
 #
 # Example:  You have an image file with a single ext4 partition that you want
-# resized to be the minimum size it can plus 100MB - ./autosizer.sh <imagefile> 100
+# resized to be the minimum size it can plus 100Mega*blocks*
+# - `./autosizer.sh <imagefile> 100`
 #
 # It assumes partition 1 is the FAT32 boot partition and 2 is the ext4 partition.
 # It is also destructive and will modify the original file!!!
@@ -35,7 +36,7 @@ echo "Error : Not an image file, or file doesn't exist"
 exit
 fi
 
-extraSpace=$(( extraSpace * 1048576 ))
+extraSpace=$(( extraSpace * 1024 ))
 
 partinfo=`parted -m $1 unit B print`
 partnumber=`echo "$partinfo" | grep ext4 | awk -F: ' { print $1 } '`
