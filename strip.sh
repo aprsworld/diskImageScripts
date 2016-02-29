@@ -1,5 +1,19 @@
 #!/bin/bash
 # Image file truncator
+#
+# This script will take a disk image file and remove extra partitions
+# and make the image exactly the size needed.
+#
+# So if you have an image file you dd'd off a flash card and run this
+# script it will truncate it to the size of the image including all
+# partitions up the one specified.  It's really not tested against
+# logical partitions and assumes a DOS partition scheme.
+#
+# Example: You have an image with 2 or more partitions and you only
+# want to keep the first two - ./strip.sh <imagefile> 2
+#
+# It works on the original image so is destructive!
+#
 # Written by "David A. Russell" <david@aprsworld.com>
 strImgFile=$1
 lastpartnum=$2
