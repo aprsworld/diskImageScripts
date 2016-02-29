@@ -30,7 +30,7 @@ echo "Usage: ./autosizer.sh <Image File> [<extraSpace>]"
 exit
 fi
 
-if [[ ! -e $1 || ! $(file $1) =~ "DOS/MBR" ]]; then
+if [[ ! -e $1 ]]; then
 echo "Error : Not an image file, or file doesn't exist"
 exit
 fi
