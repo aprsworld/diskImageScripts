@@ -64,7 +64,6 @@ echo "Checking filesytem to be resized..."
 e2fsck -f -p $loopback
 if [ $? -ne 0 ]; then
 	echo "ERROR: Filesystem is not clean or automatically repairable!"
-	losetup -d $loopback
 	exit 3
 fi
 
@@ -75,7 +74,6 @@ minsize=$(( $minsize * $blocksize ))
 newsize=$(( $minsize + $extraSpace ))
 if [ $newsize -gt $part_size ]; then
 	echo "ERROR:  New partition size is larger than existing."
-	losetup -d $loopback
 	exit 4
 fi
 
@@ -85,12 +83,9 @@ newsize=$(( $newsize / $blocksize ))
 resize2fs -p $loopback ${newsize}
 if [ $? -ne 0 ]; then
 	echo "ERROR:  Could not resize filesystem!"
-	losetup -d $loopback
 	exit 5
 fi
 sleep 1
-losetup -d $loopback
-echo $newsize $blocksize $(( $newsize * $blocksize ))
 newsize=$(( $newsize * $blocksize ))
 
 echo "Updating Partition Table..."
@@ -102,7 +97,9 @@ if [ $? -ne 0 ]; then
 fi
 
 echo "Truncating image to final size..."
-truncate -s $(( $part_end + $blocksize )) $1
+end_byte=$(parted -ms $1 unit B print | tail -n 1 | cut -d : -f 3 | sed s/B$//)
+end_byte=$(( $end_byte + 1 ))
+truncate -s $end_byte $1
 if [ $? -ne 0 ]; then
 	echo "ERROR:  Could not truncate image file!"
 	exit 7
