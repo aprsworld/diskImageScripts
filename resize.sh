@@ -1,57 +1,112 @@
-#!/bin/bash
+#!/bin/sh
 # Automatic Image file resizer
-# Shamelessly stolen and modified by "David A. Russell" <david@aprsworld.com>
-#
-# This script will shrink an image file with a single FAT32 partition followed
-# by a single ext4 partition.  It will shrink the ext4 partition found to the
-# minimum size required to exist with all files + the second argument in
-# additional blocks space.  Blocks are generally 4kBytes.
-#
-# Example:  You have an image file with a single ext4 partition that you want
-# resized to be the minimum size it can plus 100Mega*blocks*
-# - `./autosizer.sh <imagefile> 100`
-#
-# It assumes partition 1 is the FAT32 boot partition and 2 is the ext4 partition.
-# It is also destructive and will modify the original file!!!
-#
 strImgFile=$1
-extraSpace=$2
 
-if [[ ! $(whoami) =~ "root" ]]; then
-echo ""
-echo "**********************************"
-echo "*** This should be run as root ***"
-echo "**********************************"
-echo ""
-exit
+user=$(whoami)
+if [ ! "root" = "$user" ]; then
+	echo "ERROR:  This script needs to be run as root!"
+	exit 127
 fi
 
-if [[ -z $1 ]]; then
-echo "Usage: ./autosizer.sh <Image File> [<extraSpace>]"
-exit
+if [ -z $1 ]; then
+	echo "ERROR: No Image File specified!"
+	echo "Usage: ./resize.sh <Image File> [<extraSpaceinMB>]"
+	exit 127
 fi
 
-if [[ ! -e $1 ]]; then
-echo "Error : Not an image file, or file doesn't exist"
-exit
+if [ ! -e $1 ]; then
+	echo "ERROR:  Image file does not exist!"
+	exit 127
 fi
 
-extraSpace=$(( extraSpace * 1024 ))
+partinfo=$(parted -ms $1 unit B print 2> /dev/null)
+if [ $? -ne 0 ]; then
+	echo "ERROR:  Image file is not a valid disk image!"
+	exit 127
+fi
 
-partinfo=`parted -m $1 unit B print`
-partnumber=`echo "$partinfo" | grep ext4 | awk -F: ' { print $1 } '`
-partstart=`echo "$partinfo" | grep ext4 | awk -F: ' { print substr($2,0,length($2)-1) } '`
-loopback=`losetup -f --show -o $partstart $1`
-e2fsck -f $loopback
-minsize=`resize2fs -P $loopback | awk -F': ' ' { print $2 } '`
-minsize=`echo $minsize+1000 | bc`
-minsize=$(( $minsize + $extraSpace ))
-resize2fs -p $loopback $minsize
+if [ -z $2 ]; then
+	extraSpace="4"
+else
+	extraSpace="$2"
+fi
+
+if [ $extraSpace -lt 4 ]; then
+	echo "ERROR:  You must specifiy at least 4 extra MegaBytes."
+	exit 127
+fi
+extraSpace=$(( $extraSpace * 1048576 ))
+
+# Get partition info
+partinfo_last=$(parted -ms $1 unit B print | tail -n 1)
+echo $partinfo_last
+part_type=$(echo $partinfo_last | cut -d : -f 5)
+part_num=$(echo $partinfo_last | cut -d : -f 1)
+part_start=$(echo $partinfo_last | cut -d : -f 2 | sed s/B$//)
+part_size=$(echo $partinfo_last | cut -d : -f 4 | sed s/B$//)
+if [ ! "ext4" = "$part_type" ]; then
+	echo "ERROR: Last partition is not an ext4 filesystem!"
+	exit 1
+fi
+
+# Setup loopback
+echo "Setting up loopback device..."
+loopback=$(losetup -f --show -o $part_start $1)
+echo $loopback
+if [ $? -ne 0 ]; then
+	echo "ERROR: Failed to create loopback device!"
+	exit 2
+fi
+trap 'losetup -d $loopback ; exit 126' EXIT INT TERM HUP
+
+# Check filesystem
+echo "Checking filesytem to be resized..."
+e2fsck -f -p $loopback
+if [ $? -ne 0 ]; then
+	echo "ERROR: Filesystem is not clean or automatically repairable!"
+	losetup -d $loopback
+	exit 3
+fi
+
+# Calculate minimum size
+minsize=$(resize2fs -P $loopback | cut -d : -f 2)
+blocksize=$(tune2fs -l $loopback | grep -i 'block size' | cut -d : -f 2) 
+minsize=$(( $minsize * $blocksize ))
+newsize=$(( $minsize + $extraSpace ))
+if [ $newsize -gt $part_size ]; then
+	echo "ERROR:  New partition size is larger than existing."
+	losetup -d $loopback
+	exit 4
+fi
+
+# Resize filesystem
+echo "Resizing filesystem..."
+newsize=$(( $newsize / $blocksize ))
+resize2fs -p $loopback ${newsize}
+if [ $? -ne 0 ]; then
+	echo "ERROR:  Could not resize filesystem!"
+	losetup -d $loopback
+	exit 5
+fi
 sleep 1
 losetup -d $loopback
-partnewsize=`echo "$minsize * 4096" | bc`
-newpartend=`echo "$partstart + $partnewsize" | bc`
-part1=`parted $1 rm 2`
-part2=`parted $1 unit B mkpart primary $partstart $newpartend`
-endresult=`parted -m $1 unit B print free | tail -1 | awk -F: ' { print substr($2,0,length($2)-1) } '`
-truncate -s $endresult $1
+echo $newsize $blocksize $(( $newsize * $blocksize ))
+newsize=$(( $newsize * $blocksize ))
+
+echo "Updating Partition Table..."
+part_end=$(( $part_start + $newsize ))
+parted -m $1 unit B resizepart $part_num $part_end
+if [ $? -ne 0 ]; then
+	echo "ERROR:  Could not update partition table!"
+	exit 6
+fi
+
+echo "Truncating image to final size..."
+truncate -s $(( $part_end + $blocksize )) $1
+if [ $? -ne 0 ]; then
+	echo "ERROR:  Could not truncate image file!"
+	exit 7
+fi
+
+echo "All done!"
+exit 0
