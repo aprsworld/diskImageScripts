@@ -1,5 +1,15 @@
 #!/bin/sh
 # Automatic Image file resizer
+#
+# NOTE: This script will modify the original image!
+# NOTE: This script is not tested with any partition types other than DOS/MBR
+# and is also not tested with logical partitions.  DON'T USE THIS FOR THOSE!
+#
+# This script will resize the last ext4 partition in a disk image to the
+# minimum size needed to hold it's files plus any extra space requested.
+# It will then truncate the image file to the appropriate size.
+#
+# Written by "David A. Russell" <david@aprsworld.com>
 strImgFile=$1
 
 user=$(whoami)
