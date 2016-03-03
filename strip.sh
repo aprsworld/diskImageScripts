@@ -34,10 +34,16 @@ if [ ! -e $1 ]; then
 	exit 127
 fi
 
-echo "This will truncate '$1'.  Press Enter to continue."
-read discard
+partinfo=$(/sbin/parted -ms $1 unit B print 2> /dev/null)
+if [ $? -ne 0 ]; then
+	echo "ERROR: Not a disk image file or it's corrupt!"
+	exit 127
+fi
+
 
 origsize=$(stat -c "%s" $1)
+echo "This will truncate '$1'.  Press Enter to continue."
+read discard
 
 if [ ! -z $2 ]; then
 	echo "Removing all partitions after ${2}..."
