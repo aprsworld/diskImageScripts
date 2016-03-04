@@ -15,12 +15,13 @@ strImgFile=$1
 user=$(whoami)
 if [ ! "root" = "$user" ]; then
 	echo "ERROR:  This script needs to be run as root!"
+	echo "Usage: sudo ./resize.sh <Image File> [<extraSpaceinMB>]"
 	exit 127
 fi
 
 if [ -z $1 ]; then
 	echo "ERROR: No Image File specified!"
-	echo "Usage: ./resize.sh <Image File> [<extraSpaceinMB>]"
+	echo "Usage: sudo ./resize.sh <Image File> [<extraSpaceinMB>]"
 	exit 127
 fi
 
@@ -49,7 +50,6 @@ extraSpace=$(( $extraSpace * 1048576 ))
 
 # Get partition info
 partinfo_last=$(parted -ms $1 unit B print | tail -n 1)
-echo $partinfo_last
 part_type=$(echo $partinfo_last | cut -d : -f 5)
 part_num=$(echo $partinfo_last | cut -d : -f 1)
 part_start=$(echo $partinfo_last | cut -d : -f 2 | sed s/B$//)
@@ -62,12 +62,11 @@ fi
 # Setup loopback
 echo "Setting up loopback device..."
 loopback=$(losetup -f --show -o $part_start $1)
-echo $loopback
 if [ $? -ne 0 ]; then
 	echo "ERROR: Failed to create loopback device!"
 	exit 2
 fi
-trap 'losetup -d $loopback ; exit 126' EXIT INT TERM HUP
+trap 'losetup -d $loopback' EXIT INT TERM HUP
 
 # Check filesystem
 echo "Checking filesytem to be resized..."
@@ -100,7 +99,7 @@ newsize=$(( $newsize * $blocksize ))
 
 echo "Updating Partition Table..."
 part_end=$(( $part_start + $newsize ))
-parted -m $1 unit B resizepart $part_num $part_end
+parted -m $1 unit B resizepart $part_num $part_end yes
 if [ $? -ne 0 ]; then
 	echo "ERROR:  Could not update partition table!"
 	exit 6
